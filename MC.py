@@ -27,7 +27,7 @@ class Demon:
             self.v=np.ones((self.n,self.dims),dtype=np.float64)*0.5
 
         self.energy_v=[self.energy(),]
-        self.config = [self.v,]
+        self.config = [np.copy(self.v),]
             
 
     def energy(self,):
@@ -63,7 +63,8 @@ class Demon:
                     self.demon    -= dE
 
             if(s%dump_step==0):
-                self.config.append(self.v)
+                self.config.append(np.copy(self.v))
+               
             self.energy_v.append(self.energy())
                     
         self.sweeps += sweeps
