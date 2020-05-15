@@ -15,8 +15,8 @@ class ensemble(object):
         
 
     def init_coord(self,):
-        self._v=uniform.rvs(size=(self.np))-0.5
-        self._c=uniform.rvs(size=(self.np))
+        self._v=2.*(uniform.rvs(size=(self.np))-0.5)
+        self._c=np.sort(uniform.rvs(size=(self.np)))
         self._mass = np.ones(self.np,dtype=np.float64)
 
     @property
@@ -63,32 +63,59 @@ class EventManager(ensemble):
         self.n = n
         self._radius = radius
         ensemble.__init__(self,n) 
-        self._combs = np.array(list(combinations(np.arange(self.n),2)))
+        self._couples = np.array([np.arange(self.n-1),np.arange(1,self.n)]).T
+        self._nCouples = len(self._couples)
+
+    def ghost_times(self,):
+
+        v0 = -self._v[0]
+        v1 = self._v[1]
+        vn_1 = self._v[self.n-2]
+        vn = -self._v[-1]
+
+        c0 = -self._c[0]
+        c1 = self._c[1]
+        cn_1 = self._c[self.n-2]
+        cn = 2.-self._c[-1]
+
+        t0 = (c0-c1)/(v1-v0)
+        tn = (cn_1-cn)/(vn-vn_1)
+
+        return t0,tn
         
     def next_event(self,):
 
 #        cp coordinates, velocity
-        def how_long(cp):
-            
-            return (cp[0,0]-cp[0,1])/(cp[1,1]-cp[1,0])#-2.*self._radius/np.abs(cp[1,1]-cp[1,0])
 
-        couples=np.array([self._c[self._combs],self._v[self._combs]]).swapaxes(0,1)
+        v_couples = self._v[self._couples]
 
-        times = list(map(how_long,couples))
+        c_couples = self._c[self._couples]
 
-        time_coup = np.array([times,np.arange(len(self._combs))])
+        delta_c = c_couples[:,0]-c_couples[:,1]
 
-        rem_prev = np.where(time_coup[0]>1e-10)[0]
+        delta_v = v_couples[:,1]-v_couples[:,0]
         
+        times = np.array([delta_c/delta_v,np.arange(self._nCouples)])
 
-        self._timeCoup = time_coup[:,rem_prev][:,np.argmin(time_coup[0,rem_prev])].copy()
+        where_pos = np.where(times[0]>1e-10)[0]
 
-                
-        return self._timeCoup[0]
+       
+        which_couple = times[:,where_pos][:,np.argmin(times[0,where_pos])]
+
+        
+        ti,tf = self.ghost_times()
+        
+        
+        if(ti>1e-10 and ti<which_couple[0]):
+            which_couple = [ti,0]
+        elif(tf>1e-10 and tf<which_couple[0]):
+            which_couple = [tf,self._nCouples-1]
+
+        return which_couple
 
 class TimeEvolutor():
     def __init__(self,n,delta=1e-2):
-        
+
         self._delta = delta
 
         self._em = EventManager(n)
@@ -131,8 +158,7 @@ class TimeEvolutor():
     def collision(self, couple):
 
         masses = self._em._mass[couple]
-
-
+        
         def m_matrix(m):
 
              sum_m = np.sum(m)
@@ -156,10 +182,12 @@ class TimeEvolutor():
         
         
     def next_event(self,):
+        
+        couple = self._em.next_event()
+       
+        collision_t = couple[0] + self.timer()
 
-        collision_t = self._em.next_event() + self.timer()
-
-        couple = self._em._combs[int(self._em._timeCoup[1])]
+        couple = self._em._couples[int(couple[1])]
 
         current_time = self.timer()
 
@@ -192,10 +220,11 @@ class TimeEvolutor():
         else:
 
             self.plain_evolution(collision_t-current_time)
-            
-       # print(self._em._v,self._em._c)
+
+        #print(couple)
+        #print(self._em._v)
         self.collision(couple)
-       # print(self._em._v,self._em._c)
+        #print(self._em._v)
 
     def evolve_collisions(self,n_col):
 
@@ -205,5 +234,29 @@ class TimeEvolutor():
         print("Total time : %f"%(self._time))
         
         
-                    
+    @property
+    def mass(self,):
+        return self._em._mass
+ 
+    @mass.setter
+    def mass(self,value):
+        if not isinstance(value,np.ndarray):
+            raise TypeError("Invalid coordinates")
+        if not len(value)==self._em.n:
+            raise TypeError("Invalid number of particles")
+        self._em._mass = value
 
+
+    @property
+    def v(self,):
+        return self._em._v
+ 
+    @v.setter
+    def v(self,value):
+        if not isinstance(value,np.ndarray):
+            raise TypeError("Invalid coordinates")
+        if not len(value)==self._em.n:
+            raise TypeError("Invalid number of particles")
+        self._em._v = value
+
+        
