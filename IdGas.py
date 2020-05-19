@@ -122,6 +122,8 @@ class TimeEvolutor():
 
         self._sampling = [[self._em._c.copy(),self._em._v.copy()],]
 
+        self._energy=[self.energy(),]
+        
         self._L = 1.
 
         self._time = 0.
@@ -153,7 +155,12 @@ class TimeEvolutor():
         self._time += delta_t
 
 
-
+    def dump(self,):
+        self._energy.append(self.energy())
+        self._sampling.append([self._em._c.copy(),self._em._v.copy()])
+        self._lastDump+=1
+            
+        
         
     def collision(self, couple):
 
@@ -195,23 +202,15 @@ class TimeEvolutor():
 
         dumps = int((collision_t-next_dump)/self._delta) 
 
-        # print("############################")
-        # print("Dumps %d"%(dumps,))
-        # print("Next dump %lf"%(next_dump,))
-        # print("Current time %lf"%(current_time,))
-        # print("Collision time %lf"%(collision_t,))
-        # print("############################")
-
+        
         if(next_dump<collision_t):
             self.plain_evolution(next_dump-current_time)
-            self._sampling.append([self._em._c.copy(),self._em._v.copy()])
-            self._lastDump+=1
-            
+            self.dump()
+                       
             
             while(dumps>0):
                 self.plain_evolution(self._delta)
-                self._sampling.append([self._em._c.copy(),self._em._v.copy()])
-                self._lastDump+=1
+                self.dump()
                 dumps-=1
 
 
@@ -221,10 +220,9 @@ class TimeEvolutor():
 
             self.plain_evolution(collision_t-current_time)
 
-        #print(couple)
-        #print(self._em._v)
+
         self.collision(couple)
-        #print(self._em._v)
+
 
     def evolve_collisions(self,n_col):
 
@@ -258,5 +256,9 @@ class TimeEvolutor():
         if not len(value)==self._em.n:
             raise TypeError("Invalid number of particles")
         self._em._v = value
+        self._sampling[0]=[self._em._c.copy(),self._em._v.copy()]
+        self._energy[0]=self.energy()
 
-        
+    def energy(self,):
+        tmp = self._em._v**2
+        return np.average(0.5*self._em._mass*tmp)
