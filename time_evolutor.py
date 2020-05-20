@@ -23,6 +23,7 @@ class TimeEvolutor():
         
         self._lastDump = 0.
 
+        self._collisions = 0
        
     def timer(self,):
         return self._time
@@ -57,6 +58,8 @@ class TimeEvolutor():
         
     def collision(self, couple):
 
+        self._collisions += 1
+        
         masses = self._em._mass[couple]
         
         def m_matrix(m):
@@ -132,14 +135,18 @@ class TimeEvolutor():
 
 
         self.collision(couple)
-        self.check_positions()
+#        self.check_positions()
         
-    def evolve_collisions(self,n_col):
+    def evolve_collisions(self,n_col=0,time=0):
 
-        print("Starting time : %f"%(self._time))
-        for c in range(n_col):
-            self.next_event()
-        print("Total time : %f"%(self._time))
+       
+        if(time ==0):
+            for c in range(n_col):
+                self.next_event()
+        else:
+            while(self.timer()<time):
+                self.next_event()
+        print("Total time  %f, Collisions %d , Dumps %d"%(self._time,self._collisions, self._lastDump))
         
         
     @property
