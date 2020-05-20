@@ -4,21 +4,24 @@ from itertools import combinations
 import math as math
 
 class ensemble(object):
-    def __init__(self,np):
+    def __init__(self,np,brownian=False):
 
         if not isinstance(np, int):
             raise TypeError("The particle number must be int")
         
         self.np = np
-        self.init_coord()
-        
-        
+        self.init_coord(brownian)
 
-    def init_coord(self,):
+        
+    def init_coord(self,br):
         self._v=2.*(uniform.rvs(size=(self.np))-0.5)
         self._c=np.sort(uniform.rvs(size=(self.np)))
         self._mass = np.ones(self.np,dtype=np.float64)
-
+        if(br):
+            aux = (self._c[int(self.np/2)+1]-self._c[int(self.np/2)])
+            self._c[0] = aux*uniform.rvs(size=(1))+self._c[int(self.np/2)]
+            self._mass[0] = 1e1*self._mass[0]
+                
     @property
     def v(self,):
         return self._v
@@ -59,13 +62,14 @@ class ensemble(object):
 
 
 class EventManager(ensemble):
-    def __init__(self,n,radius=0.01):
+    def __init__(self,n,radius=0.01,brownian=False):
         self.n = n
         self._radius = radius
-        ensemble.__init__(self,n) 
+        ensemble.__init__(self,n,brownian) 
         self._couples = np.array([np.arange(self.n-1),np.arange(1,self.n)]).T
         self._nCouples = len(self._couples)
-
+        self._neg = len(np.where(self._c[1:]<self._c[0])[0])
+        
     def ghost_times(self,):
 
         v0 = -self._v[0]
@@ -113,152 +117,56 @@ class EventManager(ensemble):
 
         return which_couple
 
-class TimeEvolutor():
-    def __init__(self,n,delta=1e-2):
+    
+    def next_event_BM(self,):
+        ''''''''''
+        Function giving the next collisional event in
+        case of the presence of a Brownian particle.
+        The Brownian particle correspond to the index 0
+        while the other particles can go through each
+        other
+        '''''''''
 
-        self._delta = delta
+        def get_which_part(ratio):
+            
+            times = np.array([ratio,np.arange(1,self.n)])
+            
+            where_pos = np.where(times[0]>1e-10)[0]
 
-        self._em = EventManager(n)
+            which_particle = [1e6,0]
 
-        self._sampling = [[self._em._c.copy(),self._em._v.copy()],]
+            try:
+                which_particle = times[:,where_pos][:,np.argmin(times[0,where_pos])]
+            except:
+                which_particle = [1e6,0]
 
-        self._energy=[self.energy(),]
+           
+            return which_particle
+    
+                
+        distances = (self._c[1:]-self._c[0])
+        velocities = (self._v[0]-self._v[1:])
         
-        self._L = 1.
+        which_particle = get_which_part(distances/velocities) 
 
-        self._time = 0.
-        
-        self._lastDump = 0.
+        distances = (-self._c[1:]-self._c[0])
+        velocities = (self._v[0]+self._v[1:])
 
+        which_particle_l = get_which_part(distances/velocities)
 
-    def timer(self,):
-        return self._time
-        
-    def plain_evolution(self, delta_t):
-        
-        tent_c = self._em._c + delta_t*self._em._v
-        
-        to_change_neg = np.where(tent_c<0)[0]
+        distances = (2.-self._c[1:]-self._c[0])
 
-        tent_c[to_change_neg] = np.abs(tent_c[to_change_neg])
+        which_particle_r = get_which_part(distances/velocities)
 
-        to_change_pos = np.where(tent_c>1)[0]
+        string = "standard"
+        if(which_particle[0]>which_particle_l[0] and which_particle_l[1]<=self._neg):
+            string= "left"
+            which_particle = which_particle_l.copy()
+        if(which_particle[0]>which_particle_r[0] and which_particle_r[1]>self._neg):
+            string = "right"
+            which_particle = which_particle_r.copy()
 
-        tent_c[to_change_pos] = 2-tent_c[to_change_pos]
-
-        self._em._c = np.copy(tent_c)
-        
-        self._em._v[to_change_pos] *= -1.
-
-        self._em._v[to_change_neg] *= -1.
-
-        self._time += delta_t
-
-
-    def dump(self,):
-        self._energy.append(self.energy())
-        self._sampling.append([self._em._c.copy(),self._em._v.copy()])
-        self._lastDump+=1
+      
+        return which_particle
             
         
-        
-    def collision(self, couple):
-
-        masses = self._em._mass[couple]
-        
-        def m_matrix(m):
-
-             sum_m = np.sum(m)
-             
-             diff_m = m[1]-m[0]
-
-             r1 = [-diff_m/sum_m,2.*m[1]/sum_m]
-
-             r2 = [2.*m[0]/sum_m,diff_m/sum_m]
-
-             m_matr = np.matrix([r1,r2])
-             
-             return m_matr
-             
-
-        m = m_matrix(masses)
-
-        vels = m*np.matrix(self._em._v[couple]).T
-        
-        self._em._v[couple] = np.copy(np.array(vels).squeeze())
-        
-        
-    def next_event(self,):
-        
-        couple = self._em.next_event()
-       
-        collision_t = couple[0] + self.timer()
-
-        couple = self._em._couples[int(couple[1])]
-
-        current_time = self.timer()
-
-        next_dump = (self._lastDump+1)*self._delta
-
-        dumps = int((collision_t-next_dump)/self._delta) 
-
-        
-        if(next_dump<collision_t):
-            self.plain_evolution(next_dump-current_time)
-            self.dump()
-                       
-            
-            while(dumps>0):
-                self.plain_evolution(self._delta)
-                self.dump()
-                dumps-=1
-
-
-            self.plain_evolution(collision_t-self.timer())
-
-        else:
-
-            self.plain_evolution(collision_t-current_time)
-
-
-        self.collision(couple)
-
-
-    def evolve_collisions(self,n_col):
-
-        print("Starting time : %f"%(self._time))
-        for c in range(n_col):
-            self.next_event()
-        print("Total time : %f"%(self._time))
-        
-        
-    @property
-    def mass(self,):
-        return self._em._mass
- 
-    @mass.setter
-    def mass(self,value):
-        if not isinstance(value,np.ndarray):
-            raise TypeError("Invalid coordinates")
-        if not len(value)==self._em.n:
-            raise TypeError("Invalid number of particles")
-        self._em._mass = value
-
-
-    @property
-    def v(self,):
-        return self._em._v
- 
-    @v.setter
-    def v(self,value):
-        if not isinstance(value,np.ndarray):
-            raise TypeError("Invalid coordinates")
-        if not len(value)==self._em.n:
-            raise TypeError("Invalid number of particles")
-        self._em._v = value
-        self._sampling[0]=[self._em._c.copy(),self._em._v.copy()]
-        self._energy[0]=self.energy()
-
-    def energy(self,):
-        tmp = self._em._v**2
-        return np.average(0.5*self._em._mass*tmp)
